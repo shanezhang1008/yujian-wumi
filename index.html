@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>遇见五迷</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+#topbar{position:fixed;top:0;left:0;right:0;z-index:90;height:48px;background:var(--yl);border-bottom:var(--bd);display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+#topbar .brand{font-weight:900;font-size:17px;letter-spacing:1px}
+#topbar .idchip{display:flex;align-items:center;gap:6px}
+#topbar .idbtn{border:var(--bd);background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:2px 2px 0 var(--ink);font-family:inherit}
+#tabbar{position:fixed;bottom:0;left:0;right:0;z-index:90;background:#fff;border-top:var(--bd);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+#tabbar button{flex:1;border:none;background:none;padding:11px 0 9px;font-size:12px;font-weight:800;color:var(--muted);cursor:pointer;font-family:inherit}
+#tabbar button.on{color:var(--ink)}
+#tabbar button .ti{display:block;font-size:19px;line-height:1.1}
+#app{padding-top:60px}
+.backline{margin-bottom:12px}
+</style>
+</head>
+<body>
+<header id="topbar">
+  <span class="brand">遇见五迷</span>
+  <span class="idchip">
+    <span class="sub" id="idname" style="font-weight:800">游客</span>
+    <button class="idbtn" data-act="switchId">切身份</button>
+  </span>
+</header>
+<main id="app"></main>
+<nav id="tabbar"></nav>
+<div id="toast"></div>
+<script src="js/app.js"></script>
+</body>
+</html>
