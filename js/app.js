@@ -1,11 +1,20 @@
 'use strict';
-/* 遇见五迷 H5 v0.1 —— 本地数据层版（接口后续替换 CloudBase） */
+/* 遇见五迷 H5 v0.2 —— 深化版：候补递补 / 名单发群 / 活动编辑取消 / 数据备份 */
 
 /* ============ 工具 ============ */
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const Q = "'";
 const fmtPhone = p => p ? p.slice(0,3) + '****' + p.slice(-4) : '';
+function copyStr(str){
+  const ta = document.createElement('textarea');
+  ta.value = str; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
 function toast(msg){
   const el = $('#toast'); el.textContent = msg; el.classList.add('show');
   clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 2200);
@@ -65,6 +74,14 @@ function quotasOf(a){
   return { m: rs.filter(r => r.gender === '男').length, f: rs.filter(r => r.gender === '女').length };
 }
 function checkedIn(actId){ return actRegs(actId).filter(r => r.checkin); }
+function waitlistOf(actId){ return actRegs(actId).filter(r => r.status === 'wait'); }
+function parseDL(a){
+  if (!a || !a.deadline) return null;
+  const m = a.deadline.match(/^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return new Date(new Date().getFullYear(), +m[1]-1, +m[2], +m[3], +m[4]);
+}
+function dlPassed(a){ const d = parseDL(a); return d ? d.getTime() < Date.now() : false; }
 
 /* ============ 路由 ============ */
 const routes = {};
@@ -80,7 +97,8 @@ function renderChrome(page){
   ];
   if (isAdmin()) tabs.push({ k:'workbench', icon:'🛠', label:'工作台' });
   $('#tabbar').innerHTML = tabs.map(t => {
-    const on = page === t.k || (t.k === 'home' && ['detail','signup','checkin','vote'].includes(page));
+    const adminPages = ['workbench','create','edit','signups','qrcode','settle','roster','member','admins','remind','backup'];
+    const on = page === t.k || (t.k === 'home' && ['detail','signup','checkin','vote'].includes(page)) || (t.k === 'workbench' && adminPages.includes(page));
     return '<button data-go="#/' + t.k + '" class="' + (on ? 'on' : '') + '"><span class="ti">' + t.icon + '</span>' + t.label + '</button>';
   }).join('');
 }
@@ -122,12 +140,14 @@ function backBtn(to, label){
 function actCard(a){
   const q = quotasOf(a);
   const st = a.status === 'open' ? '<span class="tag yl">报名中</span>'
-    : a.status === 'doing' ? '<span class="tag gn">进行中</span>' : '<span class="tag">已结束</span>';
+    : a.status === 'doing' ? '<span class="tag gn">进行中</span>'
+    : a.status === 'cancelled' ? '<span class="tag gy">已取消</span>' : '<span class="tag">已结束</span>';
   return '<div class="card"><div class="spread">' + st + '<span class="sub">免费 · ' + esc(a.date) + '</span></div>' +
     '<div class="h1" style="margin-top:8px">' + esc(a.title) + '</div>' +
     '<div class="sub" style="margin:6px 0 2px">🗓 ' + esc(a.date) + '（' + esc(a.start) + ' 开场）</div>' +
     '<div class="sub">📍 ' + esc(a.venue) + '</div>' +
     '<div class="qb">' + quotaRow('男','bl',q.m,a.quotaM) + quotaRow('女','pk',q.f,a.quotaF) + '</div>' +
+    (a.status === 'open' && waitlistOf(a.id).length ? '<div class="sub" style="margin-top:6px">⏳ 候补 ' + waitlistOf(a.id).length + ' 人</div>' : '') +
     '<div style="margin-top:14px"><button class="btn yl" data-go="#/detail/' + a.id + '">查看详情 →</button></div></div>';
 }
 routes.home = function(){
@@ -145,6 +165,13 @@ routes.home = function(){
 routes.detail = function(id){
   const a = actById(id);
   if (!a) { go('#/home'); return; }
+  if (a.status === 'cancelled') {
+    $('#app').innerHTML = backBtn('#/home','活动列表') +
+      '<div class="card" style="text-align:center;padding:24px 16px">' + faceHtml('rd','flat') +
+      '<div class="h1" style="margin-top:10px">本场活动已取消</div>' +
+      '<div class="sub" style="margin-top:6px">' + esc(a.date) + ' ' + esc(a.start) + ' · ' + esc(a.venue) + '<br>有疑问请联系主理人</div></div>';
+    return;
+  }
   const q = quotasOf(a);
   const my = myReg(id);
   let html = backBtn('#/home','活动列表');
@@ -153,14 +180,26 @@ routes.detail = function(id){
     '<div class="h1" style="margin-top:8px">' + esc(a.title) + '</div>' +
     '<div class="sub" style="margin-top:4px">时间：' + esc(a.date) + ' ' + esc(a.start) + ' - ' + esc(a.end) + '</div>' +
     '<div class="sub">地点：' + esc(a.venue) + '</div>' +
-    '<div class="sub">截止：' + esc(a.deadline) + '</div>' +
+    '<div class="sub">截止：' + esc(a.deadline) + (dlPassed(a) ? ' <b style="color:var(--rd)">（已截止）</b>' : '') + '</div>' +
     '<div class="qb">' + quotaRow('男','bl',q.m,a.quotaM) + quotaRow('女','pk',q.f,a.quotaF) + '</div></div>';
   html += '<div class="card"><div class="sec-t"><span class="num">1</span>今日流程（提前准备）</div>' +
     a.agenda.map((g,i) => '<div class="li"><span class="num">' + (i+1) + '</span><div><div class="nm">' + esc(g.name) + '</div><div class="meta">' + esc(g.dur) + '</div></div></div>').join('') +
     '<div class="note">自我介绍建议讲四点：<b>怎么称呼 / 做什么工作 / 平时爱好 / 想认识什么样的朋友</b></div></div>';
   html += '<div class="card"><div class="sec-t"><span class="num">2</span>报名须知</div>' +
     '<div class="sub">· 活动免费，男女名额分开计<br>· 迟到 15 分钟以上记录迟到（仅管理员可见）<br>· 有事请提前取消，爽约满 2 次暂停报名</div></div>';
-  if (my && my.status === 'ok') {
+  const okList = actRegs(id).filter(r => r.status === 'ok');
+  const wlList = waitlistOf(id);
+  html += '<div class="card"><div class="sec-t"><span class="num">3</span>已报名 ' + okList.length + ' 人</div>' +
+    '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+    (okList.length ? okList.map(r => '<span class="tag ' + (r.gender === '女' ? 'pk' : 'bl') + '">' + esc(r.name) + '</span>').join('') : '<span class="sub">还没有人报名</span>') +
+    '</div>' +
+    (wlList.length ? '<div class="sub" style="margin-top:8px">⏳ 候补 ' + wlList.length + ' 人：' + wlList.map(r => esc(r.name)).join('、') + '</div>' : '') +
+    '</div>';
+  if (my && my.status === 'wait') {
+    html += '<div class="card"><div class="spread"><b>候补中 ⏳</b><span class="sub">按报名顺序递补</span></div>' +
+      '<div class="sub" style="margin-top:6px">有人取消时将自动递补为正式报名，请留意群里通知。</div>' +
+      '<button class="btn sm ghost" style="margin-top:10px" onclick="A.cancel(' + Q + a.id + Q + ')">取消候补</button></div>';
+  } else if (my && my.status === 'ok') {
     html += '<div class="card"><div class="row" style="justify-content:space-between"><b>你已报名 ✓</b><span class="sub">' +
       (my.checkin ? '已签到 · 编号 ' + my.checkin.no : '待签到') + '</span></div>' +
       '<div class="row" style="gap:10px;margin-top:12px">' +
@@ -168,9 +207,12 @@ routes.detail = function(id){
       '<button class="btn sm" onclick="A.cancel(' + Q + a.id + Q + ')">取消报名</button></div></div>';
   } else if (a.status === 'open') {
     const full = (me() && me().gender === '女') ? q.f >= a.quotaF : q.m >= a.quotaM;
+    const dlp = dlPassed(a);
     html += full
-      ? '<button class="btn" disabled style="opacity:.5">名额已满</button>'
-      : '<button class="btn yl" style="position:sticky;bottom:12px" onclick="A.toSignup(' + Q + a.id + Q + ')">我要报名</button>';
+      ? (dlp ? '<button class="btn" disabled style="opacity:.5">名额已满 · 已截止</button>'
+             : '<button class="btn" style="background:var(--bl);color:#fff" onclick="A.toSignup(' + Q + a.id + Q + ')">名额已满 · 排队候补</button>')
+      : (dlp ? '<button class="btn" disabled style="opacity:.5">报名已截止</button>'
+             : '<button class="btn yl" style="position:sticky;bottom:12px" onclick="A.toSignup(' + Q + a.id + Q + ')">我要报名</button>');
   }
   if (a.voteOpen) html += '<button class="btn" style="margin-top:12px;background:var(--pk)" data-go="#/vote/' + a.id + '">♥ 心动互选进行中 →</button>';
   $('#app').innerHTML = html;
@@ -214,7 +256,9 @@ routes.checkin = function(id){
   if (!needLogin('#/checkin/' + id)) return;
   const a = actById(id); if (!a) { go('#/home'); return; }
   const my = myReg(id);
-  if (!my || my.status !== 'ok') { toast('你还没有报名本场'); go('#/detail/' + id); return; }
+  if (!my) { toast('你还没有报名本场'); go('#/detail/' + id); return; }
+  if (my.status === 'wait') { toast('还在候补中，递补成功后可签到'); go('#/detail/' + id); return; }
+  if (my.status !== 'ok') { toast('报名还未通过审核'); go('#/detail/' + id); return; }
   if (my.checkin) {
     $('#app').innerHTML = backBtn('#/detail/' + id) +
       '<div class="card" style="text-align:center;padding:24px 16px">' +
@@ -281,14 +325,30 @@ routes.my = function(){
   html += '<div class="stats"><div class="stat"><div class="v">' + ok.length + '</div><div class="k">参加过</div></div>' +
     '<div class="stat"><div class="v" style="color:var(--gn)">' + rate + '%</div><div class="k">到场率</div></div>' +
     '<div class="stat"><div class="v" style="color:var(--rd)">' + absence + '</div><div class="k">爽约</div></div></div>';
+  html += '<div class="card"><div class="sec-t"><span class="num">1</span>我的资料</div>' +
+    '<label class="f">活动昵称</label><input class="input" id="pName" value="' + esc(ros ? ros.name : u.name) + '">' +
+    (ros
+      ? '<div class="row" style="gap:8px;margin-top:2px"><div style="flex:1"><label class="f">MBTI</label><input class="input" id="pMbti" value="' + esc(ros.mbti || '') + '"></div>' +
+        '<div style="flex:1"><label class="f">常驻区域</label><input class="input" id="pCity" value="' + esc(ros.city || '') + '"></div></div>' +
+        '<label class="f">一句话介绍</label><input class="input" id="pBio" value="' + esc(ros.bio || '') + '">' +
+        '<button class="btn sm yl" style="margin-top:10px" onclick="A.saveProfile()">保存资料</button>' +
+        '<div class="sub" style="margin-top:8px">保存后管理员可见，报名可免审核</div>'
+      : '<div class="sub" style="margin-top:8px">新朋友通过审核入册后，可在这里维护 MBTI、介绍等资料</div>') +
+    '</div>';
   const upcoming = ok.filter(r => { const a = actById(r.actId); return a && a.status !== 'archived'; });
-  html += '<div class="card"><div class="sec-t"><span class="num">1</span>即将参加</div>';
+  const waiting = mine.filter(r => r.status === 'wait');
+  html += '<div class="card"><div class="sec-t"><span class="num">2</span>即将参加</div>';
   html += upcoming.length ? upcoming.map(r => {
     const a = actById(r.actId);
     return '<div class="li"><div style="flex:1"><div class="nm">' + esc(a.title) + '</div><div class="meta">' + esc(a.date) + ' ' + esc(a.start) + (r.checkin ? ' · 已签到' : ' · 待签到') + '</div></div>' +
       '<button class="btn sm" data-go="#/checkin/' + a.id + '">' + (r.checkin ? '编号' + r.checkin.no : '签到') + '</button></div>';
   }).join('') : '<div class="sub">暂无，去首页看看 →</div>';
-  html += '</div><div class="card"><div class="sec-t"><span class="num">2</span>历史记录</div>';
+  html += waiting.map(r => {
+    const a = actById(r.actId);
+    return '<div class="li"><div style="flex:1"><div class="nm">' + esc(a.title) + '</div><div class="meta">' + esc(a.date) + ' · 候补中</div></div>' +
+      '<span class="tag yl">候补</span></div>';
+  }).join('');
+  html += '</div><div class="card"><div class="sec-t"><span class="num">3</span>历史记录</div>';
   const past = ok.filter(r => { const a = actById(r.actId); return a && a.status === 'archived'; });
   html += past.length ? past.map(r => {
     const a = actById(r.actId);
@@ -326,7 +386,9 @@ routes.workbench = function(){
       '<div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">' +
       '<button class="btn sm" data-go="#/signups">报名审核' + (pend ? ' (' + pend + ')' : '') + '</button>' +
       '<button class="btn sm gn" data-go="#/qrcode/' + open.id + '">扫码签到</button>' +
-      '<button class="btn sm" data-go="#/settle/' + open.id + '">结算归档</button></div>' +
+      '<button class="btn sm" data-go="#/settle/' + open.id + '">结算归档</button>' +
+      '<button class="btn sm yl" onclick="A.copyRoster(' + Q + open.id + Q + ')">复制名单</button>' +
+      '<button class="btn sm" data-go="#/edit/' + open.id + '">编辑</button></div>' +
       '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">' +
       (open.voteOpen
         ? '<button class="btn sm pk" style="background:var(--pk)" onclick="A.closeVote(' + Q + open.id + Q + ')">关闭互选 · 生成配对</button>'
@@ -343,6 +405,7 @@ routes.workbench = function(){
     '<div class="gcell" data-go="#/roster"><span class="dot" style="background:var(--gn)"></span>花名册</div>' +
     '<div class="gcell" data-go="#/admins"><span class="dot" style="background:var(--bl)"></span>管理员</div>' +
     '<div class="gcell" data-go="#/remind"><span class="dot" style="background:var(--pk)"></span>提醒文案</div>' +
+    '<div class="gcell" data-go="#/backup"><span class="dot" style="background:var(--yl)"></span>数据备份</div>' +
     '</div>';
   const past = db.activities.filter(a => a.status === 'archived').sort((x,y) => y.no - x.no);
   html += '<div class="card"><div class="sec-t"><span class="num">3</span>历史场次</div>' +
@@ -376,6 +439,26 @@ routes.create = function(){
     '<button class="btn yl" style="position:sticky;bottom:12px" onclick="A.createAct()">发布活动</button>';
 };
 
+/* ============ 管理端：编辑/取消活动 ============ */
+routes.edit = function(id){
+  if (!guardAdmin()) return;
+  const a = actById(id); if (!a) { go('#/workbench'); return; }
+  $('#app').innerHTML = backBtn('#/workbench','工作台') +
+    '<div class="card"><div class="sec-t"><span class="num">1</span>编辑活动信息</div>' +
+    '<label class="f">活动标题</label><input class="input" id="eTitle" value="' + esc(a.title) + '">' +
+    '<label class="f">日期</label><input class="input" id="eDate" value="' + esc(a.date) + '">' +
+    '<div class="row" style="gap:8px"><div style="flex:1"><label class="f">开始</label><input class="input" id="eStart" value="' + esc(a.start) + '"></div>' +
+    '<div style="flex:1"><label class="f">结束</label><input class="input" id="eEnd" value="' + esc(a.end) + '"></div></div>' +
+    '<label class="f">地点</label><input class="input" id="eVenue" value="' + esc(a.venue) + '">' +
+    '<div class="row" style="gap:8px"><div style="flex:1"><label class="f">男生名额</label><input class="input" id="eQm" type="number" value="' + a.quotaM + '"></div>' +
+    '<div style="flex:1"><label class="f">女生名额</label><input class="input" id="eQf" type="number" value="' + a.quotaF + '"></div></div>' +
+    '<label class="f">报名截止</label><input class="input" id="eDl" value="' + esc(a.deadline || '') + '"></div>' +
+    '<div class="card"><div class="sec-t"><span class="num">2</span>危险操作</div>' +
+    '<div class="sub">取消后成员端显示「已取消」，不可恢复；请同时在群里通知大家。</div>' +
+    '<button class="btn rd" style="margin-top:10px" onclick="A.cancelAct(' + Q + a.id + Q + ')">取消本场活动</button></div>' +
+    '<button class="btn yl" style="position:sticky;bottom:12px" onclick="A.saveAct(' + Q + a.id + Q + ')">保存修改</button>';
+};
+
 /* ============ 管理端：报名审核 ============ */
 routes.signups = function(){
   if (!guardAdmin()) return;
@@ -384,6 +467,7 @@ routes.signups = function(){
   const pend = actRegs(open.id).filter(r => r.status === 'pending');
   const okl = actRegs(open.id).filter(r => r.status === 'ok');
   let html = backBtn('#/workbench','工作台');
+  html += '<div class="row" style="margin-bottom:12px"><button class="btn sm yl" onclick="A.copyRoster(' + Q + open.id + Q + ')">📋 复制报名名单（发群）</button></div>';
   html += '<div class="card"><div class="sec-t"><span class="num">1</span>待审核（新朋友）' + (pend.length ? ' ' + pend.length + ' 人' : '') + '</div>';
   html += pend.length ? pend.map(g =>
     '<div class="li"' + (g.noShow ? ' style="background:#fdeeee;border-radius:10px;padding:8px;margin:0 -8px"' : '') + '><div style="flex:1">' +
@@ -397,8 +481,18 @@ routes.signups = function(){
   html += okl.length ? okl.map(g =>
     '<div class="li"><div style="flex:1"><div class="nm">' + esc(g.name) + ' <span class="tag ' + (g.gender === '女' ? 'pk' : 'bl') + '" style="font-size:10px">' + esc(g.gender) + '</span></div>' +
     '<div class="meta">' + fmtPhone(g.phone) + (g.checkin ? ' · 已签 ' + g.checkin.time : ' · 待签到') + '</div></div>' +
-    (g.checkin ? '' : '<button class="btn sm" onclick="A.mcheckin(' + Q + g.id + Q + ')">代签</button>') + '</div>').join('')
+    '<div class="row" style="gap:6px">' +
+    (g.checkin ? '' : '<button class="btn sm" onclick="A.mcheckin(' + Q + g.id + Q + ')">代签</button>') +
+    (!rosterOf(g.phone) ? '<button class="btn sm gn" onclick="A.toRoster(' + Q + g.id + Q + ')">入册</button>' : '') + '</div></div>').join('')
     : '<div class="sub">还没有人报名</div>';
+  const waitl = actRegs(open.id).filter(r => r.status === 'wait');
+  html += '</div><div class="card"><div class="sec-t"><span class="num">3</span>候补 ' + waitl.length + ' 人</div>';
+  html += waitl.length ? waitl.map(g =>
+    '<div class="li"><div style="flex:1"><div class="nm">' + esc(g.name) + ' <span class="tag ' + (g.gender === '女' ? 'pk' : 'bl') + '" style="font-size:10px">' + esc(g.gender) + '</span></div>' +
+    '<div class="meta">' + fmtPhone(g.phone) + ' · 花名册成员 · 按顺序递补</div></div>' +
+    '<div class="row" style="gap:6px"><button class="btn sm gn" onclick="A.promoteWait(' + Q + g.id + Q + ')">递补</button>' +
+    '<button class="btn sm ghost" onclick="A.rej(' + Q + g.id + Q + ')">移除</button></div></div>').join('')
+    : '<div class="sub">暂无候补。名额满后，群友可一键排队候补。</div>';
   html += '</div>';
   $('#app').innerHTML = html;
 };
@@ -528,8 +622,20 @@ routes.admins = function(){
 routes.remind = function(){
   if (!guardAdmin()) return;
   const NL = String.fromCharCode(10);
-  const t1 = '今晚 19:30 五迷小馆见！记得提前 15 分钟到，扫码签到后领号码牌。有事提前说，爽约 2 次会暂停报名哦。';
-  const t2 = '今晚 22:00 报名截止！名额有限，想来的抓紧报名 →';
+  const a = db.activities.find(x => x.status === 'open');
+  let t1, t2;
+  if (a) {
+    const okl = actRegs(a.id).filter(r => r.status === 'ok');
+    const m = okl.filter(r => r.gender === '男').length, f = okl.filter(r => r.gender === '女').length;
+    const wl = waitlistOf(a.id).length;
+    t1 = '【' + a.title + '】' + NL + '⏰ ' + a.date + ' ' + a.start + '-' + a.end + NL + '📍 ' + a.venue + NL +
+      '已报名 ' + okl.length + ' 人（男 ' + m + ' / 女 ' + f + '）' + (wl ? '，候补 ' + wl + ' 人' : '') + NL +
+      '提前 15 分钟到，扫码签到领号码牌。有事提前说，爽约 2 次会暂停报名哦。';
+    t2 = '【' + a.title + '】报名 ' + a.deadline + ' 截止！名额有限，想来的抓紧报名 →';
+  } else {
+    t1 = '今晚 19:30 见！记得提前 15 分钟到，扫码签到后领号码牌。有事提前说，爽约 2 次会暂停报名哦。';
+    t2 = '今晚 22:00 报名截止！名额有限，想来的抓紧报名 →';
+  }
   const t3 = '心动互选规则：每人最多选 3 个心动编号，只交换编号不公开联系方式；互选成功各自在「我的」看到对方编号，联系方式现场自行交换。';
   const card = function(no, title, txt){
     return '<div class="card"><div class="sec-t"><span class="num">' + no + '</span>' + title + '</div>' +
@@ -540,6 +646,20 @@ routes.remind = function(){
     card(2, '报名截止提醒（截止前 2 小时发）', t2) +
     card(3, '心动互选规则说明（开场时发）', t3) +
     '<div class="note">点「复制文案」后直接粘贴到微信群。文案可先粘贴到别处改好再用。</div>';
+};
+
+/* ============ 管理端：数据备份 ============ */
+routes.backup = function(){
+  if (!guardAdmin()) return;
+  $('#app').innerHTML = backBtn('#/workbench','工作台') +
+    '<div class="card"><div class="sec-t"><span class="num">1</span>导出备份</div>' +
+    '<div class="sub">数据目前只存在「本机浏览器」。换手机或清缓存前，先把这份备份复制到微信收藏/备忘录。</div>' +
+    '<textarea class="input" id="bkOut" rows="5" readonly style="margin-top:10px">' + esc(JSON.stringify(db)) + '</textarea>' +
+    '<button class="btn sm yl" style="margin-top:8px" onclick="A.copyText(' + Q + 'bkOut' + Q + ')">复制备份数据</button></div>' +
+    '<div class="card"><div class="sec-t"><span class="num">2</span>恢复备份</div>' +
+    '<textarea class="input" id="bkIn" rows="5" placeholder="把之前复制的备份数据粘贴到这里"></textarea>' +
+    '<button class="btn sm gn" style="margin-top:8px" onclick="A.restoreDb()">恢复数据</button></div>' +
+    '<div class="note">建议每次结算归档后备份一次。恢复会覆盖本机当前全部数据。</div>';
 };
 
 /* ============ 动作 ============ */
@@ -571,6 +691,7 @@ const A = {
     const ros = rosterOf(me().phone);
     if (ros && ros.absence >= 2) { toast('爽约满 2 次已暂停报名，请联系管理员恢复'); return; }
     if (myReg(id)) { toast('你已在本场报名中'); go('#/detail/' + id); return; }
+    if (dlPassed(a)) { toast('报名已截止，联系管理员试试'); return; }
     const q = quotasOf(a);
     const isF = me().gender === '女';
     if (isF ? q.f >= a.quotaF : q.m >= a.quotaM) { toast('该性别名额已满'); return; }
@@ -587,8 +708,17 @@ const A = {
     if (ros && ros.absence >= 2) { toast('爽约满 2 次已暂停报名'); return; }
     const g = ros ? ros.gender : u.gender;
     if (g !== '男' && g !== '女') { toast('缺少性别信息，请联系管理员录入花名册'); return; }
+    if (dlPassed(a)) { toast('报名已截止，请联系管理员'); return; }
     const q = quotasOf(a);
-    if (g === '女' ? q.f >= a.quotaF : q.m >= a.quotaM) { toast('该性别名额已满'); return; }
+    const full = g === '女' ? q.f >= a.quotaF : q.m >= a.quotaM;
+    if (full) {
+      if (!ros) { toast('名额已满，新朋友请联系主理人优先处理'); return; }
+      db.regs.push({ id: 'g' + Date.now(), actId: id, phone: u.phone, name: ros.name, gender: g, status: 'wait', checkin: null, noShow: false });
+      save();
+      toast('名额已满，已加入候补队列');
+      go('#/detail/' + id);
+      return;
+    }
     db.regs.push({ id: 'g' + Date.now(), actId: id, phone: u.phone, name: ros ? ros.name : u.name, gender: g, status: ros ? 'ok' : 'pending', checkin: null, noShow: false });
     save();
     toast(ros ? '报名成功！现场扫码签到领编号' : '已提交，等管理员确认后即可参加');
@@ -599,9 +729,15 @@ const A = {
     const a = actById(id);
     if (a && a.status === 'archived') { toast('活动已结束'); return; }
     if (r.checkin) { toast('已签到，无法取消'); return; }
+    const freed = r.status === 'ok';
     db.regs = db.regs.filter(x => x.id !== r.id);
+    let msg = '已取消，下次早点来';
+    if (freed && a && a.status === 'open') {
+      const w = waitlistOf(id).find(x => x.gender === r.gender);
+      if (w) { w.status = 'ok'; msg = '已取消，候补 ' + w.name + ' 已自动递补'; }
+    }
     save();
-    toast('已取消，下次早点来');
+    toast(msg);
     render();
   },
   checkin(id){
@@ -672,6 +808,96 @@ const A = {
     a.voteOpen = true; save();
     toast('心动互选已开放，通知大家扫码投票');
     render();
+  },
+  copyRoster(id){
+    const a = actById(id); if (!a) return;
+    const rs = actRegs(id);
+    const okl = rs.filter(r => r.status === 'ok');
+    const m = okl.filter(r => r.gender === '男').map(r => r.name);
+    const f = okl.filter(r => r.gender === '女').map(r => r.name);
+    const w = rs.filter(r => r.status === 'wait');
+    const NL = String.fromCharCode(10);
+    const t = '【' + a.title + '】报名名单' + NL +
+      '🗓 ' + a.date + ' ' + a.start + '-' + a.end + NL +
+      '📍 ' + a.venue + NL +
+      '男 ' + m.length + '/' + a.quotaM + '：' + (m.join('、') || '—') + NL +
+      '女 ' + f.length + '/' + a.quotaF + '：' + (f.join('、') || '—') + NL +
+      (w.length ? '候补 ' + w.length + ' 人：' + w.map(r => r.name).join('、') + NL : '') +
+      '免费公益局，想参加的联系主理人';
+    toast(copyStr(t) ? '名单已复制，去微信粘贴' : '复制失败，请手动选择文本');
+  },
+  toRoster(gid){
+    const g = db.regs.find(x => x.id === gid); if (!g) return;
+    if (rosterOf(g.phone)) { toast('已在花名册'); return; }
+    db.roster.push({ id: 'r' + Date.now(), name: g.name, gender: g.gender, birth_ym: '', city: '', phone: g.phone, mbti: '', bio: '', guarantor: '', activity_level: '偶尔冒泡', note: '', absence: 0 });
+    save();
+    toast(g.name + ' 已加入花名册');
+    render();
+  },
+  promoteWait(gid){
+    const g = db.regs.find(x => x.id === gid);
+    if (!g || g.status !== 'wait') return;
+    const a = actById(g.actId); if (!a) return;
+    const q = quotasOf(a);
+    if (g.gender === '女' ? q.f >= a.quotaF : q.m >= a.quotaM) { toast('对应名额未空出，可先在「编辑」里扩容'); return; }
+    g.status = 'ok'; save();
+    toast(g.name + ' 已递补为正式报名');
+    render();
+  },
+  saveAct(id){
+    const a = actById(id); if (!a) return;
+    const title = ($('#eTitle').value || '').trim();
+    const date = ($('#eDate').value || '').trim();
+    const venue = ($('#eVenue').value || '').trim();
+    const qm = parseInt($('#eQm').value, 10) || 0;
+    const qf = parseInt($('#eQf').value, 10) || 0;
+    if (!title || !date || !venue) { toast('标题、日期、地点为必填'); return; }
+    if (qm < 1 || qm > 20 || qf < 1 || qf > 20) { toast('名额限 1-20 人'); return; }
+    const q = quotasOf(a);
+    if (qm < q.m || qf < q.f) { toast('名额不能低于已报名人数（男 ' + q.m + ' / 女 ' + q.f + '）'); return; }
+    a.title = title; a.date = date;
+    a.start = ($('#eStart').value || '').trim() || a.start;
+    a.end = ($('#eEnd').value || '').trim() || a.end;
+    a.venue = venue; a.quotaM = qm; a.quotaF = qf;
+    a.deadline = ($('#eDl').value || '').trim();
+    save();
+    toast('已保存修改');
+    go('#/workbench');
+  },
+  cancelAct(id){
+    const a = actById(id); if (!a) return;
+    if (!confirm('确定取消本场活动？成员端会显示「已取消」，不可恢复。')) return;
+    a.status = 'cancelled'; a.voteOpen = false;
+    save();
+    toast('活动已取消，记得在群里通知大家');
+    go('#/workbench'); render();
+  },
+  saveProfile(){
+    const u = me(); if (!u) return;
+    const name = ($('#pName').value || '').trim();
+    if (!name) { toast('昵称必填'); return; }
+    u.name = name;
+    const ros = rosterOf(u.phone);
+    if (ros) {
+      ros.name = name;
+      ros.mbti = ($('#pMbti').value || '').trim();
+      ros.city = ($('#pCity').value || '').trim();
+      ros.bio = ($('#pBio').value || '').trim();
+    }
+    save();
+    toast(ros ? '已保存，管理员已同步' : '已保存昵称');
+    render();
+  },
+  restoreDb(){
+    const raw = ($('#bkIn').value || '').trim();
+    if (!raw) { toast('请先粘贴备份数据'); return; }
+    let d;
+    try { d = JSON.parse(raw); } catch (e) { toast('内容不是有效备份'); return; }
+    if (!d || !Array.isArray(d.roster) || !Array.isArray(d.activities) || !Array.isArray(d.admins) || !Array.isArray(d.regs)) { toast('备份内容不完整'); return; }
+    if (!confirm('恢复会覆盖本机全部数据，确定？')) return;
+    db = d; save();
+    toast('已恢复备份');
+    go('#/workbench'); render();
   },
   closeVote(id){
     const a = actById(id); if (!a) return;
