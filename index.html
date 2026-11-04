@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>遇见五迷</title>
-<link rel="stylesheet" href="css/app.css?v=0.2">
-<meta name="theme-color" content="#FFDE2E">
+<link rel="stylesheet" href="css/app.css?v=0.2.1">
+<meta name="theme-color" content="#FFFFFF">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遇见五迷">
@@ -13,21 +13,22 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" href="icon-180.png">
 <style>
-#topbar{position:fixed;top:0;left:0;right:0;z-index:90;height:48px;background:var(--yl);border-bottom:var(--bd);display:flex;align-items:center;justify-content:space-between;padding:0 14px}
-#topbar .brand{font-weight:900;font-size:17px;letter-spacing:1px}
+#topbar{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;z-index:90;background:#fff;border-bottom:var(--bd);height:calc(48px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 14px 0;display:flex;align-items:center;justify-content:space-between}
+#topbar .brand{font-weight:900;font-size:17px;letter-spacing:1px;display:flex;align-items:center}
+#topbar .dot5{display:inline-block;width:10px;height:10px;background:var(--yl);border:2px solid var(--ink);border-radius:3px;margin-right:7px}
 #topbar .idchip{display:flex;align-items:center;gap:6px}
 #topbar .idbtn{border:var(--bd);background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:2px 2px 0 var(--ink);font-family:inherit}
-#tabbar{position:fixed;bottom:0;left:0;right:0;z-index:90;background:#fff;border-top:var(--bd);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+#tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;z-index:90;background:#fff;border-top:var(--bd);display:flex;padding-bottom:env(safe-area-inset-bottom)}
 #tabbar button{flex:1;border:none;background:none;padding:11px 0 9px;font-size:12px;font-weight:800;color:var(--muted);cursor:pointer;font-family:inherit}
 #tabbar button.on{color:var(--ink)}
 #tabbar button .ti{display:block;font-size:19px;line-height:1.1}
-#app{padding-top:60px}
+#app{padding-top:12px}
 .backline{margin-bottom:12px}
 </style>
 </head>
 <body>
 <header id="topbar">
-  <span class="brand">遇见五迷</span>
+  <span class="brand"><i class="dot5"></i>遇见五迷</span>
   <span class="idchip">
     <span class="sub" id="idname" style="font-weight:800">游客</span>
     <button class="idbtn" data-act="switchId">切身份</button>
@@ -36,6 +37,6 @@
 <main id="app"></main>
 <nav id="tabbar"></nav>
 <div id="toast"></div>
-<script src="js/app.js?v=0.2"></script>
+<script src="js/app.js?v=0.2.1"></script>
 </body>
 </html>

@@ -142,13 +142,13 @@ function actCard(a){
   const st = a.status === 'open' ? '<span class="tag yl">报名中</span>'
     : a.status === 'doing' ? '<span class="tag gn">进行中</span>'
     : a.status === 'cancelled' ? '<span class="tag gy">已取消</span>' : '<span class="tag">已结束</span>';
-  return '<div class="card"><div class="spread">' + st + '<span class="sub">免费 · ' + esc(a.date) + '</span></div>' +
+  return '<div class="card tappable" data-go="#/detail/' + a.id + '"><div class="spread">' + st + '<span class="chev">›</span></div>' +
     '<div class="h1" style="margin-top:8px">' + esc(a.title) + '</div>' +
-    '<div class="sub" style="margin:6px 0 2px">🗓 ' + esc(a.date) + '（' + esc(a.start) + ' 开场）</div>' +
+    '<div class="sub" style="margin:6px 0 2px">🗓 ' + esc(a.date) + '（' + esc(a.start) + ' 开场）· 免费</div>' +
     '<div class="sub">📍 ' + esc(a.venue) + '</div>' +
     '<div class="qb">' + quotaRow('男','bl',q.m,a.quotaM) + quotaRow('女','pk',q.f,a.quotaF) + '</div>' +
     (a.status === 'open' && waitlistOf(a.id).length ? '<div class="sub" style="margin-top:6px">⏳ 候补 ' + waitlistOf(a.id).length + ' 人</div>' : '') +
-    '<div style="margin-top:14px"><button class="btn yl" data-go="#/detail/' + a.id + '">查看详情 →</button></div></div>';
+    '</div>';
 }
 routes.home = function(){
   const acts = db.activities.filter(a => a.status !== 'draft').sort((x,y) => y.no - x.no);
@@ -210,11 +210,11 @@ routes.detail = function(id){
     const dlp = dlPassed(a);
     html += full
       ? (dlp ? '<button class="btn" disabled style="opacity:.5">名额已满 · 已截止</button>'
-             : '<button class="btn" style="background:var(--bl);color:#fff" onclick="A.toSignup(' + Q + a.id + Q + ')">名额已满 · 排队候补</button>')
+             : '<button class="btn bl" onclick="A.toSignup(' + Q + a.id + Q + ')">名额已满 · 排队候补</button>')
       : (dlp ? '<button class="btn" disabled style="opacity:.5">报名已截止</button>'
-             : '<button class="btn yl" style="position:sticky;bottom:12px" onclick="A.toSignup(' + Q + a.id + Q + ')">我要报名</button>');
+             : '<button class="btn yl sticky-cta" onclick="A.toSignup(' + Q + a.id + Q + ')">我要报名</button>');
   }
-  if (a.voteOpen) html += '<button class="btn" style="margin-top:12px;background:var(--pk)" data-go="#/vote/' + a.id + '">♥ 心动互选进行中 →</button>';
+  if (a.voteOpen) html += '<button class="btn pk" style="margin-top:12px" data-go="#/vote/' + a.id + '">♥ 心动互选进行中 →</button>';
   $('#app').innerHTML = html;
 };
 
@@ -267,7 +267,7 @@ routes.checkin = function(id){
       '<div class="sub">到场时间 ' + my.checkin.time + (my.checkin.late ? ' · 迟到' : ' · 准时 ✓') + '</div>' +
       '<div class="row" style="justify-content:center;margin-top:14px"><span class="tag yl" style="font-size:15px;padding:7px 18px">本场编号 ' + my.checkin.no + '</span></div>' +
       '<div class="sub" style="margin-top:8px">编号即心动互选号码牌，全程匿名</div></div>' +
-      (a.voteOpen ? '<button class="btn" style="background:var(--pk)" data-go="#/vote/' + id + '">♥ 心动互选进行中 →</button>' : '') +
+      (a.voteOpen ? '<button class="btn pk" data-go="#/vote/' + id + '">♥ 心动互选进行中 →</button>' : '') +
       '<button class="btn" style="margin-top:12px" data-go="#/my">查看我的报名 →</button>';
     return;
   }
@@ -357,7 +357,8 @@ routes.my = function(){
   }).join('') : '<div class="sub">还没有历史场次</div>';
   html += '</div>';
   if (absence >= 1) html += '<div class="note">当前爽约 ' + absence + ' 次' + (absence >= 2 ? '，已暂停报名，需管理员恢复' : '，再爽约 1 次将暂停报名') + '。提前取消不计爽约。</div>';
-  html += '<button class="btn" style="margin-top:6px" onclick="A.logout()">退出登录（清除本机 90 天免验证）</button>';
+  html += '<button class="btn danger-ghost" style="margin-top:6px" onclick="A.logout()">退出登录</button>' +
+    '<div class="sub" style="text-align:center;margin-top:6px">退出将清除本机 90 天免验证记录</div>';
   $('#app').innerHTML = html;
 };
 
@@ -384,16 +385,16 @@ routes.workbench = function(){
       '<div class="sub">' + esc(open.date) + ' ' + esc(open.start) + ' · ' + esc(open.venue) + '</div>' +
       '<div class="qb" style="margin-top:8px">' + quotaRow('男','bl',q.m,open.quotaM) + quotaRow('女','pk',q.f,open.quotaF) + '</div>' +
       '<div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">' +
-      '<button class="btn sm" data-go="#/signups">报名审核' + (pend ? ' (' + pend + ')' : '') + '</button>' +
+      '<button class="btn sm yl" data-go="#/signups">报名审核' + (pend ? ' (' + pend + ')' : '') + '</button>' +
       '<button class="btn sm gn" data-go="#/qrcode/' + open.id + '">扫码签到</button>' +
-      '<button class="btn sm" data-go="#/settle/' + open.id + '">结算归档</button>' +
-      '<button class="btn sm yl" onclick="A.copyRoster(' + Q + open.id + Q + ')">复制名单</button>' +
-      '<button class="btn sm" data-go="#/edit/' + open.id + '">编辑</button></div>' +
+      '<button class="btn sm" data-go="#/settle/' + open.id + '">结算归档</button></div>' +
       '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">' +
+      '<button class="btn sm ghost" onclick="A.copyRoster(' + Q + open.id + Q + ')">📋 复制名单</button>' +
+      '<button class="btn sm ghost" data-go="#/edit/' + open.id + '">编辑活动</button>' +
       (open.voteOpen
-        ? '<button class="btn sm pk" style="background:var(--pk)" onclick="A.closeVote(' + Q + open.id + Q + ')">关闭互选 · 生成配对</button>'
-        : '<button class="btn sm pk" style="background:var(--pk)" onclick="A.openVote(' + Q + open.id + Q + ')">开放心动互选</button>') +
-      '<button class="btn sm" data-go="#/detail/' + open.id + '">预览成员端</button></div></div>';
+        ? '<button class="btn sm pk" onclick="A.closeVote(' + Q + open.id + Q + ')">关闭互选 · 配对</button>'
+        : '<button class="btn sm pk" onclick="A.openVote(' + Q + open.id + Q + ')">开放心动互选</button>') +
+      '<button class="btn sm ghost" data-go="#/detail/' + open.id + '">预览成员端</button></div></div>';
   } else {
     html += '<div class="card" style="text-align:center;padding:20px 16px">' + faceHtml('yl','smile') +
       '<div class="sub" style="margin-top:8px">当前没有报名中的活动</div>' +
@@ -436,7 +437,7 @@ routes.create = function(){
     '<div style="flex:1"><label class="f">女生名额</label><input class="input" id="cQf" type="number" value="5"></div></div>' +
     '<label class="f">报名截止</label><input class="input" id="cDl" placeholder="例：11-13 22:00">' +
     '<div class="note">流程默认使用固定模板（签到入场 → 主理人开场 → 热场自我介绍 → 自由交流 → 合影散场），发布后可在成员端预览。</div></div>' +
-    '<button class="btn yl" style="position:sticky;bottom:12px" onclick="A.createAct()">发布活动</button>';
+    '<button class="btn yl sticky-cta" onclick="A.createAct()">发布活动</button>';
 };
 
 /* ============ 管理端：编辑/取消活动 ============ */
@@ -456,7 +457,7 @@ routes.edit = function(id){
     '<div class="card"><div class="sec-t"><span class="num">2</span>危险操作</div>' +
     '<div class="sub">取消后成员端显示「已取消」，不可恢复；请同时在群里通知大家。</div>' +
     '<button class="btn rd" style="margin-top:10px" onclick="A.cancelAct(' + Q + a.id + Q + ')">取消本场活动</button></div>' +
-    '<button class="btn yl" style="position:sticky;bottom:12px" onclick="A.saveAct(' + Q + a.id + Q + ')">保存修改</button>';
+    '<button class="btn yl sticky-cta" onclick="A.saveAct(' + Q + a.id + Q + ')">保存修改</button>';
 };
 
 /* ============ 管理端：报名审核 ============ */
@@ -506,7 +507,7 @@ routes.qrcode = function(id){
   html += '<div class="card" style="text-align:center;padding:22px 16px">' +
     '<div class="sub">现场出示 · 每 30 秒自动刷新 · 截图无效</div>' +
     '<div class="qrbox" style="margin-top:12px"><span>第' + a.no + '期</span></div>' +
-    '<div style="margin-top:12px;font-size:34px;font-weight:900;color:var(--yl)">00:<span id="cdT">30</span></div>' +
+    '<div style="margin-top:12px;font-size:34px;font-weight:900;color:var(--ink)">00:<span id="cdT">30</span></div>' +
     '<div class="sub">已签到 ' + checkedIn(a.id).length + ' / ' + actRegs(a.id).filter(r => r.status === 'ok').length + ' 人</div></div>';
   const wait = actRegs(a.id).filter(r => r.status === 'ok' && !r.checkin);
   html += '<div class="card"><div class="sec-t"><span class="num">1</span>未签到（可代签）</div>' +
@@ -544,7 +545,7 @@ routes.settle = function(id){
       '<div class="meta">' + (g.checkin ? g.checkin.time + ' 到场' + (g.checkin.late ? ' · 迟到' : '') : '未签到') + '</div></div>' +
       '<label class="chk" style="margin:0"><input type="checkbox" id="cb-' + g.id + '"><span>未到场</span></label></div>').join('')
       : '<div class="sub">本场无人报名</div>') + '</div>';
-  html += '<button class="btn rd" style="background:var(--rd);position:sticky;bottom:12px" onclick="A.settleDo(' + Q + id + Q + ')">确认结算并归档</button>';
+  html += '<button class="btn rd sticky-cta" onclick="A.settleDo(' + Q + id + Q + ')">确认结算并归档</button>';
   $('#app').innerHTML = html;
 };
 
@@ -1036,6 +1037,11 @@ const A = {
 window.A = A;
 
 /* ============ 启动 ============ */
+document.addEventListener('focusin', function(e){
+  if (e.target && e.target.classList && e.target.classList.contains('input')) {
+    setTimeout(function(){ try { e.target.scrollIntoView({ block:'center', behavior:'smooth' }); } catch(err){} }, 260);
+  }
+});
 document.body.addEventListener('click', function(e){
   const b = e.target.closest('[data-go]');
   if (b) go(b.getAttribute('data-go'));
